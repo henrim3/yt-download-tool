@@ -1,0 +1,6 @@
+{
+  "C_Cpp.files.exclude": {
+    "**/build/_deps/sdl3-src/src/**": true
+  },
+  "C_Cpp.exclusionPolicy": "checkFolders"
+}
