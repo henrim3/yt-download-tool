@@ -11,34 +11,6 @@
 int saved_stdout = -1;
 char* input_buf = NULL;
 
-void disable_stdout() {
-  LOG_MESSAGE( "TODO: implement disable_stdout" );
-
-  // // flush any buffered output
-  // fflush( stdout );
-
-  // // open nul file
-  // int nul_fd = _open( "NUL", _O_WRONLY );
-  // if ( nul_fd == -1 ) {
-  //   LOG_PERROR( "Error while opening NUL" );
-  //   exit( EXIT_FAILURE );
-  // }
-
-  // // save stdout
-  // saved_stdout = _dup( _fileno( stdout ) );
-  // if ( saved_stdout == -1 ) {
-  //   LOG_PERROR( "Error whlie saving stdout" );
-  //   exit( EXIT_FAILURE );
-  // }
-
-  // if ( _dup2( nul_fd, _fileno( stdout ) ) == -1 ) {
-  //   LOG_PERROR( "Error while redirecting stdout to NUL" );
-  //   exit( EXIT_FAILURE );
-  // }
-
-  // _close( nul_fd );
-}
-
 void check_platform() {
 // check platform
 #if defined( _WIN64 )
@@ -56,8 +28,6 @@ void check_platform() {
 
 void check_python_installed() {
   FILE* p_pipe;
-
-  disable_stdout();
 
   if ( ( p_pipe = _popen( "python --version", "rt" ) ) == NULL ) {
     LOG_PERROR( "Error while running python --version" );
@@ -137,13 +107,43 @@ void free_null_terminated_str_arr( char** arr ) {
   free( arr );
 }
 
+void download_yt_vid( char* url ) {
+  FILE* p_pipe;
+
+  char* first_part = "python yt-dlp/yt_dlp/__main__.py ";
+  char* command =
+      malloc( ( strlen( first_part ) + strlen( url ) + 1 ) * sizeof( char ) );
+
+  strcpy( command, first_part );
+  strcpy( command + strlen( first_part ), url );
+
+  if ( ( p_pipe = _popen( command, "rt" ) ) == NULL ) {
+    LOG_PERROR( "_popen error while running ytdlp command" );
+    exit( EXIT_FAILURE );
+  }
+
+  free( command );
+
+  if ( _pclose( p_pipe ) ) {
+    LOG_ERROR( "Error while runnning ytdlp command" );
+    exit( EXIT_FAILURE );
+  }
+}
+
+void handle_token( char* token ) {
+  if ( strcmp( token, "exit" ) == 0 ) {
+    exit( EXIT_SUCCESS );
+  }
+
+  download_yt_vid( token );
+}
+
 void handle_input() {
   strip_right( input_buf );
   char** tokens = get_tokens( input_buf );
+
   for ( char** ptr = tokens; *ptr != NULL; ptr++ ) {
-    if ( strcmp( *ptr, "exit" ) == 0 ) {
-      exit( EXIT_SUCCESS );
-    }
+    handle_token( *ptr );
   }
 
   free_null_terminated_str_arr( tokens );
