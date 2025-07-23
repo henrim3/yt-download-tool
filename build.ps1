@@ -1,9 +1,11 @@
 New-Item -Path "build" -ItemType Directory -Force > $null
 
-Set-Location -Path "build"
+$OriginalLocation = Get-Location
+
+Set-Location $PSScriptRoot\build
 
 cmake .
 
 cmake --build .
 
-Set-Location -Path ".."
+Set-Location $OriginalLocation
