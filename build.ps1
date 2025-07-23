@@ -1,4 +1,4 @@
-New-Item -Path "build" -ItemType Directory -Force
+New-Item -Path "build" -ItemType Directory -Force > $null
 
 Set-Location -Path "build"
 
