@@ -11,13 +11,26 @@
 int saved_stdout = -1;
 char* input_buf = NULL;
 
+int str_eq( char* s1, char* s2 ) {
+  return strcmp( s1, s2 ) == 0;
+}
+
+int char_in_str( char c, char* s ) {
+  for ( char* ptr = s; *ptr != '\0'; ptr++ ) {
+    if ( *ptr == c ) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
 void check_platform() {
 // check platform
 #if defined( _WIN64 )
-  LOG_MESSAGE( "Running in Win64\n" );
+  printf( "Running in Win64\n" );
 
 #elif defined( _WIN32 )
-  LOG_MESSAGE( "Running in Win32\n" );
+  printf( "Running in Win32\n" );
 
 #else
   LOG_ERROR( "Only windows is supported, exiting...\n" );
@@ -29,13 +42,13 @@ void check_platform() {
 void check_python_installed() {
   FILE* p_pipe;
 
-  if ( ( p_pipe = _popen( "python --version", "rt" ) ) == NULL ) {
+  if ( ( p_pipe = _popen( "python --version > $nul", "rt" ) ) == NULL ) {
     LOG_PERROR( "Error while running python --version" );
     exit( EXIT_FAILURE );
   }
 
   if ( _pclose( p_pipe ) ) {
-    LOG_ERROR( "Python not installed" );
+    printf( "Python not installed\n" );
     exit( EXIT_FAILURE );
   }
 }
@@ -64,7 +77,8 @@ void get_input() {
 void strip_right( char* str ) {
   int count = 0;
   for ( int i = strlen( str ) - 1; i >= 0; i-- ) {
-    if ( str[i] != ' ' && str[i] != '\n' && str[i] != '\t' ) {
+    // TODO: THIS IS BROKEN
+    if ( !char_in_str( str[i], " \n\t" ) ) {
       break;
     }
     count++;
@@ -108,30 +122,36 @@ void free_null_terminated_str_arr( char** arr ) {
 }
 
 void download_yt_vid( char* url ) {
+  printf( "Downloading %s\n", url );
+
   FILE* p_pipe;
+  char buf[128];
 
-  char* first_part = "python yt-dlp/yt_dlp/__main__.py ";
-  char* command =
-      malloc( ( strlen( first_part ) + strlen( url ) + 1 ) * sizeof( char ) );
+  char command[512];
+  snprintf( command, sizeof( command ),
+            "python yt-dlp/yt_dlp/__main__.py \"%s\" > $nul", url );
 
-  strcpy( command, first_part );
-  strcpy( command + strlen( first_part ), url );
+  printf( "Running command: %s\n", command );
 
   if ( ( p_pipe = _popen( command, "rt" ) ) == NULL ) {
     LOG_PERROR( "_popen error while running ytdlp command" );
     exit( EXIT_FAILURE );
   }
 
-  free( command );
+  // need to flush for whatever reason
+  while ( fgets( buf, sizeof( buf ), p_pipe ) ) {
+  }
 
   if ( _pclose( p_pipe ) ) {
     LOG_ERROR( "Error while runnning ytdlp command" );
     exit( EXIT_FAILURE );
   }
+
+  printf( "Download complete\n" );
 }
 
 void handle_token( char* token ) {
-  if ( strcmp( token, "exit" ) == 0 ) {
+  if ( str_eq( token, "exit" ) ) {
     exit( EXIT_SUCCESS );
   }
 
@@ -159,7 +179,9 @@ void main_shell_loop() {
 }
 
 int main() {
-  LOG_MESSAGE( "Started yt-download-tool!\n" );
+  printf( "Started yt-download-tool!\n" );
+
+  check_platform();
 
   init_input_buf();
 
