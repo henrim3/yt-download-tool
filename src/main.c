@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <fcntl.h>
 #include <io.h>
 #include <stdio.h>
@@ -7,19 +8,21 @@
 
 #include "logging.h"
 
+/* --------------- enums --------------- */
+
 /* ------------- constants ------------- */
 
 #define INPUT_BUF_SIZE 256
 #define TOKENS_INITIAL_SIZE 8
 #define OUTPUT_LOCATIONS_INITIAL_SIZE 4
 
-/* ------------------------------------- */
-
 /* ------------ global vars ------------ */
 
-// buffer to hold input
+// buffer to hold user input
 char* input_buf = NULL;
+int input_buf_len = 0;
 
+// input tokens
 char** tokens = NULL;
 int tokens_len = 0;
 int tokens_size = 0;
@@ -52,6 +55,10 @@ int char_in_str( char c, char* s ) {
     }
   }
   return 0;
+}
+
+int is_whitespace( char c ) {
+  return char_in_str( c, " \n\t" );
 }
 
 int to_power( int x, int e ) {
@@ -96,9 +103,13 @@ void free_null_terminated_str_arr( char** arr ) {
 
 void free_str_arr( char** arr, int n ) {
   for ( int i = 0; i < n; i++ ) {
+    if ( arr[i] == NULL ) {
+      LOG_ERROR( "ruh roh" );
+    }
     free( arr[i] );
   }
   free( arr );
+  arr = NULL;
 }
 
 void check_platform() {
@@ -144,38 +155,125 @@ void print_prompt() {
 }
 
 void get_input() {
+  memset( input_buf, 0, INPUT_BUF_SIZE );
   if ( fgets( input_buf, INPUT_BUF_SIZE, stdin ) == NULL &&
        ferror( stdin ) != 0 ) {
     LOG_PERROR( "Error from fgets while getting input" );
     exit( EXIT_FAILURE );
   }
+  input_buf_len = strlen( input_buf );
+
+  // get rid of newline
+  input_buf[input_buf_len - 1] = '\0';
+  input_buf_len--;
 }
 
-void strip_right( char* str ) {
-  int count = 0;
-  for ( int i = strlen( str ) - 1; i >= 0; i-- ) {
-    if ( !char_in_str( str[i], " \n\t" ) ) {
-      break;
-    }
-    count++;
+// // tokens is null terminated
+// void get_tokens() {
+//   tokens_size = TOKENS_INITIAL_SIZE;
+//   tokens_len = 0;
+
+//   if ( tokens != NULL ) {
+//     free_str_arr( tokens, tokens_size );
+//     tokens = NULL;
+//   }
+//   tokens = calloc( tokens_size, sizeof( char* ) );
+
+//   char* tok = strtok( input_buf, " " );
+//   while ( tok != NULL ) {
+//     // grow if necessary, leave empty at end for NULL
+//     if ( tokens_len + 1 >= tokens_size ) {
+//       tokens_size *= 2;
+//       tokens = realloc( tokens, tokens_size * sizeof( char* ) );
+//     }
+
+//     // copy to tokens
+//     tokens[tokens_len] = malloc( ( strlen( tok ) + 1 ) * sizeof( char ) );
+//     strcpy( tokens[tokens_len], tok );
+//     tokens_len++;
+
+//     tok = strtok( NULL, " " );
+//   }
+
+//   tokens[tokens_len] = NULL;
+// }
+
+char* substr( char* s, int start, int end ) {
+  assert( s != NULL && "substring source can't be null" );
+  assert( start >= 0 && "substring start should be >= 0" );
+  assert( end >= start && "end should come after start" );
+
+  int substr_len = end - start;
+
+  char* res = malloc( ( substr_len + 1 ) * sizeof( char ) );
+  res[substr_len] = '\0';
+
+  for ( int i = 0; i < substr_len; i++ ) {
+    res[i] = s[start + i];
   }
 
-  str[strlen( str ) - count] = '\0';
+  return res;
 }
 
-// tokens is null terminated
 void get_tokens() {
   tokens_size = TOKENS_INITIAL_SIZE;
   tokens_len = 0;
 
-  if ( tokens != NULL ) {
-    free_str_arr( tokens, tokens_size );
-    tokens = NULL;
-  }
   tokens = calloc( tokens_size, sizeof( char* ) );
 
-  char* tok = strtok( input_buf, " " );
-  while ( tok != NULL ) {
+  if ( tokens == NULL ) {
+    LOG_PERROR( "calloc error while allocating tokens" );
+    exit( 1 );
+  }
+
+  int i = 0;
+  while ( i < input_buf_len ) {
+    // skip whitespace
+    while ( i < input_buf_len && is_whitespace( input_buf[i] ) ) {
+      i++;
+    }
+
+    if ( i == input_buf_len ) {
+      break;
+    }
+
+    char* token = NULL;
+    int start = i;
+    int is_quote = 0;
+
+    while ( i < input_buf_len ) {
+      if ( i == input_buf_len - 1 ) {
+        if ( is_quote && input_buf[i] == '"' ) {
+          token = substr( input_buf, start + 1, i );
+        } else {
+          token = substr( input_buf, start, i + 1 );
+        }
+        break;
+      }
+
+      if ( !is_quote && is_whitespace( input_buf[i] ) ) {
+        token = substr( input_buf, start, i );
+        break;
+      }
+
+      if ( input_buf[i] == '"' ) {
+        if ( !is_quote ) {
+          is_quote = 1;
+        } else {
+          // empty quotes
+          if ( i - start - 1 == 0 ) {
+            i++;
+            continue;
+          }
+          token = substr( input_buf, start + 1, i );
+          break;
+        }
+      }
+
+      i++;
+    }
+    i++;
+
     // grow if necessary, leave empty at end for NULL
     if ( tokens_len + 1 >= tokens_size ) {
       tokens_size *= 2;
@@ -183,18 +281,39 @@ void get_tokens() {
     }
 
     // copy to tokens
-    tokens[tokens_len] = malloc( ( strlen( tok ) + 1 ) * sizeof( char ) );
-    strcpy( tokens[tokens_len], tok );
+    tokens[tokens_len] = malloc( ( strlen( token ) + 1 ) * sizeof( char ) );
+    strcpy( tokens[tokens_len], token );
     tokens_len++;
+  }
+}
 
-    tok = strtok( NULL, " " );
+int is_input_safe( char* input ) {
+  if ( strstr( input, "rm" ) ) {
+    return 0;
   }
 
-  tokens[tokens_len] = NULL;
+  if ( char_in_str( ';', input ) ) {
+    return 0;
+  }
+
+  if ( strstr( input, "&&" ) ) {
+    return 0;
+  }
+
+  if ( strstr( input, "||" ) ) {
+    return 0;
+  }
+
+  return 1;
 }
 
 void download_yt_vid( char* url ) {
   printf( "Downloading %s\n", url );
+
+  if ( !is_input_safe( url ) ) {
+    printf( "Couldn't download %s due to unsafe input\n", url );
+    return;
+  }
 
   FILE* p_pipe;
   char buf[128];
@@ -253,7 +372,7 @@ void add_output_location( char* output_path ) {
   }
 
   output_locations[output_locations_len] =
-      malloc( strlen( output_path ) * sizeof( char ) );
+      malloc( ( strlen( output_path ) + 1 ) * sizeof( char ) );
   strcpy( output_locations[output_locations_len], output_path );
 
   output_locations_len++;
@@ -282,6 +401,9 @@ void delete_output_location( int num ) {
 
   output_locations_len--;
 
+  free( output_locations[num - 1] );
+
+  // shift everything down
   for ( int i = num - 1; i < output_locations_len; i++ ) {
     output_locations[i] = output_locations[i + 1];
   }
@@ -290,7 +412,8 @@ void delete_output_location( int num ) {
   if ( output_locations_len < output_locations_size / 2 &&
        output_locations_size / 2 >= OUTPUT_LOCATIONS_INITIAL_SIZE ) {
     output_locations_size /= 2;
-    output_locations = realloc( output_locations, output_locations_size );
+    output_locations =
+        realloc( output_locations, output_locations_size * sizeof( char ) );
   }
 }
 
@@ -326,45 +449,49 @@ void handle_output_command() {
   print_help();
 }
 
-void handle_input() {
-  strip_right( input_buf );
+// returns 1 if time to exit
+int handle_input() {
   get_tokens();
 
   if ( tokens_len == 0 || tokens[0] == NULL ) {
     printf( "No input provided...\n" );
-    return;
+    return 0;
   }
 
   if ( str_eq_any( tokens[0], (char*[]){ "exit", "quit", NULL } ) ) {
     printf( "Closing... Bye!\n" );
-    exit( EXIT_SUCCESS );
-    return;
+    return 1;
   }
 
   if ( str_eq( tokens[0], "dl" ) ) {
     download_yt_vids( &( tokens[1] ) );
-    return;
+    return 0;
   }
 
   if ( str_eq( tokens[0], "output" ) ) {
     handle_output_command();
-    return;
+    return 0;
   }
 
   if ( str_eq( tokens[0], "help" ) ) {
     print_help();
-    return;
+    return 0;
   }
 
   printf( "Command not recognized\n" );
   print_help();
+
+  return 0;
 }
 
 void main_shell_loop() {
   while ( 1 ) {
     print_prompt();
     get_input();
-    handle_input();
+    if ( handle_input() == 1 ) {
+      return;
+    }
+    free_str_arr( tokens, tokens_len );
   }
 }
 
@@ -382,8 +509,11 @@ int main() {
 
   // free globals
   free( input_buf );
-  free_str_arr( tokens, tokens_size );
-  free_str_arr( output_locations, output_locations_size );
+  free_str_arr( output_locations, output_locations_len );
+
+  if ( tokens != NULL ) {
+    // free_str_arr( tokens, tokens_len );
+  }
 
   return EXIT_SUCCESS;
 }
