@@ -1,3 +1,4 @@
 - convert to wav file, need ffmpeg probably
 - https://www.reddit.com/r/youtubedl/comments/13el971/dunces_guide_to_downloading_audio_with_ytdlp/
 - add debug logging using define and if preprocessor
+- combine tokens that haev quotes
