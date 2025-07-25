@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
+#include <windows.h>
 
 #include "logging.h"
 
@@ -15,6 +16,7 @@
 #define INPUT_BUF_SIZE 256
 #define TOKENS_INITIAL_SIZE 8
 #define OUTPUT_LOCATIONS_INITIAL_SIZE 4
+#define TEMP_DIR_PATH "temp"
 
 /* ------------ global vars ------------ */
 
@@ -34,13 +36,13 @@ int output_locations_size = 0;
 
 /* ------------------------------------- */
 
-int str_eq( char* s1, char* s2 ) {
+int str_eq( const char* s1, const char* s2 ) {
   return strcmp( s1, s2 ) == 0;
 }
 
 // ss is null terminated
-int str_eq_any( char* s, char** ss ) {
-  for ( char** ptr = ss; *ptr != NULL; ptr++ ) {
+int str_eq_any( const char* s, const char** ss ) {
+  for ( const char** ptr = ss; *ptr != NULL; ptr++ ) {
     if ( str_eq( s, *ptr ) ) {
       return 1;
     }
@@ -48,12 +50,20 @@ int str_eq_any( char* s, char** ss ) {
   return 0;
 }
 
-int char_in_str( char c, char* s ) {
-  for ( char* ptr = s; *ptr != '\0'; ptr++ ) {
-    if ( *ptr == c ) {
+int char_in_str( char c, const char* s ) {
+  int i = 0;
+  while ( s[i] != '\0' ) {
+    if ( s[i] == c ) {
       return 1;
     }
+    i++;
   }
+
+  // for ( char* ptr = s; *ptr != '\0'; ptr++ ) {
+  //   if ( *ptr == c ) {
+  //     return 1;
+  //   }
+  // }
   return 0;
 }
 
@@ -72,7 +82,7 @@ int to_power( int x, int e ) {
 }
 
 // returns negative if invalid
-int str_to_int( char* s ) {
+int str_to_int( const char* s ) {
   int len = strlen( s );
   if ( len == 0 ) {
     return -1;
@@ -287,7 +297,7 @@ void get_tokens() {
   }
 }
 
-int is_input_safe( char* input ) {
+int is_input_safe( const char* input ) {
   if ( strstr( input, "rm" ) ) {
     return 0;
   }
@@ -307,8 +317,8 @@ int is_input_safe( char* input ) {
   return 1;
 }
 
-void download_yt_vid( char* url ) {
-  printf( "Downloading %s\n", url );
+void download_yt_vid( const char* url ) {
+  printf( "Downloading %s...\n", url );
 
   if ( !is_input_safe( url ) ) {
     printf( "Couldn't download %s due to unsafe input\n", url );
@@ -320,7 +330,8 @@ void download_yt_vid( char* url ) {
 
   char command[512];
   snprintf( command, sizeof( command ),
-            "python yt-dlp/yt_dlp/__main__.py -x \"%s\" > $nul", url );
+            "python yt-dlp/yt_dlp/__main__.py \"%s\" -P ./%s/vids/ > $nul", url,
+            TEMP_DIR_PATH );
 
   printf( "Running command: %s\n", command );
 
@@ -334,16 +345,16 @@ void download_yt_vid( char* url ) {
   }
 
   if ( _pclose( p_pipe ) ) {
-    LOG_ERROR( "Error while runnning ytdlp command" );
+    LOG_ERROR( "Error while running ytdlp command" );
     exit( EXIT_FAILURE );
   }
 
   printf( "Successfully downloaded %s\n", url );
 }
 
-void download_yt_vids( char** urls ) {
-  for ( char** ptr = urls; *ptr != NULL; ptr++ ) {
-    download_yt_vid( *ptr );
+void download_yt_vids( const char** urls, int n ) {
+  for ( int i = 0; i < n; i++ ) {
+    download_yt_vid( urls[i] );
   }
 }
 
@@ -362,7 +373,7 @@ void ensure_output_locations_initialized() {
   }
 }
 
-void add_output_location( char* output_path ) {
+void add_output_location( const char* output_path ) {
   ensure_output_locations_initialized();
 
   if ( output_locations_len + 1 >= output_locations_size ) {
@@ -398,6 +409,8 @@ void delete_output_location( int num ) {
     printf( "Invalid delete index %d\n", num );
     return;
   }
+
+  printf( "Deleting output: %s\n", output_locations[num - 1] );
 
   output_locations_len--;
 
@@ -458,13 +471,13 @@ int handle_input() {
     return 0;
   }
 
-  if ( str_eq_any( tokens[0], (char*[]){ "exit", "quit", NULL } ) ) {
+  if ( str_eq_any( tokens[0], (const char*[]){ "exit", "quit", NULL } ) ) {
     printf( "Closing... Bye!\n" );
     return 1;
   }
 
   if ( str_eq( tokens[0], "dl" ) ) {
-    download_yt_vids( &( tokens[1] ) );
+    download_yt_vids( (const char**)tokens + 1, tokens_len - 1 );
     return 0;
   }
 
@@ -510,10 +523,6 @@ int main() {
   // free globals
   free( input_buf );
   free_str_arr( output_locations, output_locations_len );
-
-  if ( tokens != NULL ) {
-    // free_str_arr( tokens, tokens_len );
-  }
 
   return EXIT_SUCCESS;
 }
