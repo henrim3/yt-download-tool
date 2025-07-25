@@ -54,6 +54,39 @@ int char_in_str( char c, char* s ) {
   return 0;
 }
 
+int to_power( int x, int e ) {
+  int res = 1;
+
+  for ( int i = 0; i < e; i++ ) {
+    res *= x;
+  }
+
+  return res;
+}
+
+// returns negative if invalid
+int str_to_int( char* s ) {
+  int len = strlen( s );
+  if ( len == 0 ) {
+    return -1;
+  }
+
+  int res = 0;
+
+  for ( int i = len - 1; i >= 0; i-- ) {
+    char c = s[i];
+    if ( c < '0' || c > '9' ) {
+      return -1;
+    }
+
+    int val = c - '0';
+
+    res += to_power( 10, len - ( i + 1 ) ) * val;
+  }
+
+  return res;
+}
+
 void free_null_terminated_str_arr( char** arr ) {
   for ( char** ptr = arr; *ptr != NULL; ptr++ ) {
     free( *ptr );
@@ -240,30 +273,57 @@ void list_output_locations() {
   }
 }
 
-void handle_add_command() {
-  if ( str_eq( tokens[1], "output" ) ) {
-    if ( tokens_len < 3 ) {
-      printf( "You must specify an output path to add\n" );
-      return;
-    }
-    add_output_location( tokens[2] );
-  } else {
-    printf( "Add command not recognized\n" );
-    print_add_command_help();
+// 1-indexed
+void delete_output_location( int num ) {
+  if ( num <= 0 || num > output_locations_len ) {
+    printf( "Invalid delete index %d\n", num );
+    return;
+  }
+
+  output_locations_len--;
+
+  for ( int i = num - 1; i < output_locations_len; i++ ) {
+    output_locations[i] = output_locations[i + 1];
+  }
+
+  // shrink if possible
+  if ( output_locations_len < output_locations_size / 2 &&
+       output_locations_size / 2 >= OUTPUT_LOCATIONS_INITIAL_SIZE ) {
+    output_locations_size /= 2;
+    output_locations = realloc( output_locations, output_locations_size );
   }
 }
 
-void handle_list_command() {
-  if ( str_eq_any( tokens[1], (char*[]){ "output", "outputs", NULL } ) ) {
-    if ( tokens[0] == NULL ) {
-      printf( "Listing outputs\n" );
-      return;
+void handle_output_command() {
+  if ( str_eq( tokens[1], "add" ) ) {
+    if ( tokens_len == 3 ) {
+      add_output_location( tokens[2] );
+    } else {
+      printf( "output add command requires 3 tokens\n" );
     }
-    list_output_locations();
-  } else {
-    printf( "Add command not recognized\n" );
-    print_add_command_help();
+    return;
   }
+
+  if ( str_eq( tokens[1], "del" ) ) {
+    if ( tokens_len == 3 ) {
+      delete_output_location( str_to_int( tokens[2] ) );
+    } else {
+      printf( "output del requires 3 tokens\n" );
+    }
+    return;
+  }
+
+  if ( str_eq( tokens[1], "list" ) ) {
+    if ( tokens_len == 2 ) {
+      list_output_locations();
+    } else {
+      printf( "output list requires 2 tokens\n" );
+    }
+    return;
+  }
+
+  printf( "output command not found\n" );
+  print_help();
 }
 
 void handle_input() {
@@ -275,7 +335,7 @@ void handle_input() {
     return;
   }
 
-  if ( str_eq( tokens[0], "exit" ) ) {
+  if ( str_eq_any( tokens[0], (char*[]){ "exit", "quit", NULL } ) ) {
     printf( "Closing... Bye!\n" );
     exit( EXIT_SUCCESS );
     return;
@@ -286,13 +346,8 @@ void handle_input() {
     return;
   }
 
-  if ( str_eq( tokens[0], "add" ) ) {
-    handle_add_command();
-    return;
-  }
-
-  if ( str_eq( tokens[0], "list" ) ) {
-    handle_list_command();
+  if ( str_eq( tokens[0], "output" ) ) {
+    handle_output_command();
     return;
   }
 
