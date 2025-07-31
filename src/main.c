@@ -364,13 +364,30 @@ void download_yt_videos( const char** urls, int n ) {
   }
 }
 
+int dir_exists( const char* dir_path ) {
+  DWORD file_type = GetFileAttributes( dir_path );
+  if ( file_type == INVALID_FILE_ATTRIBUTES ) {
+    return 0;
+  }
+
+  if ( file_type & FILE_ATTRIBUTE_DIRECTORY ) {
+    return 1;
+  }
+
+  LOG_ERROR( "path %s is to file, not dir", dir_path );
+
+  return 0;
+}
+
 void convert_video_to_wav( const char* file ) {
   printf( "Converting %s...\n", file );
 
-  // create temp wavs directory
-  if ( CreateDirectory( TEMP_WAVS_DIR, NULL ) == 0 ) {
-    LOG_ERROR( "Error while creating temp wavs directory" );
-    exit( EXIT_FAILURE );
+  // create temp wavs directory if it doesn't exist
+  if ( !dir_exists( TEMP_WAVS_DIR ) ) {
+    if ( CreateDirectory( TEMP_WAVS_DIR, NULL ) == 0 ) {
+      LOG_ERROR( "Error while creating temp wavs directory" );
+      exit( EXIT_FAILURE );
+    }
   }
 
   if ( !is_input_safe( file ) ) {
@@ -382,8 +399,9 @@ void convert_video_to_wav( const char* file ) {
   char buf[128];
 
   char command[512];
-  snprintf( command, sizeof( command ), "ffmpeg -i \"%s\\%s\" \"%s\\%s.wav\"",
-            TEMP_VIDS_DIR, file, TEMP_WAVS_DIR, file );
+  snprintf( command, sizeof( command ),
+            "ffmpeg -y -i \"%s\\%s\" \"%s\\%s.wav\"", TEMP_VIDS_DIR, file,
+            TEMP_WAVS_DIR, file );
 
   printf( "Running command: %s\n", command );
 
@@ -406,13 +424,43 @@ void convert_video_to_wav( const char* file ) {
 
 void convert_videos_to_wavs() {
   StringVector* video_files;
-  video_files = get_files_in_dir( ".\\tmp\\vids" );
+  video_files = get_files_in_dir( TEMP_VIDS_DIR );
 
   for ( int i = 0; i < video_files->length; i++ ) {
     convert_video_to_wav( StringVector_get( video_files, i ) );
   }
 
   StringVector_free( video_files );
+}
+
+void send_wav_to_outputs( char* wav_file ) {
+  // build path to input file
+  char input_file_path[2048];
+  sprintf( input_file_path, "%s\\%s", TEMP_WAVS_DIR, wav_file );
+
+  for ( int i = 0; i < output_locations_len; i++ ) {
+    char* output_location = output_locations[i];
+
+    // build path to output file
+    char output_file_path[2048];
+    sprintf( output_file_path, "%s\\%s", output_location, wav_file );
+
+    // copy to output
+    if ( CopyFile( input_file_path, output_file_path, 0 ) == 0 ) {
+      LOG_ERROR( "Error while copying wav to output location" );
+    }
+  }
+}
+
+void send_wavs_to_outputs() {
+  StringVector* wav_files;
+  wav_files = get_files_in_dir( TEMP_WAVS_DIR );
+
+  for ( int i = 0; i < wav_files->length; i++ ) {
+    send_wav_to_outputs( StringVector_get( wav_files, i ) );
+  }
+
+  StringVector_free( wav_files );
 }
 
 void print_help() {
@@ -490,6 +538,7 @@ void delete_output_location( int num ) {
 void handle_download_command() {
   download_yt_videos( (const char**)tokens + 1, tokens_len - 1 );
   convert_videos_to_wavs();
+  send_wavs_to_outputs();
 }
 
 void handle_output_command() {
