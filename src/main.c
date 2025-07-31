@@ -336,7 +336,7 @@ void download_yt_video( const char* url ) {
 
   char command[512];
   snprintf( command, sizeof( command ),
-            "python yt-dlp/yt_dlp/__main__.py \"%s\" -P .\\%s > $nul", url,
+            "python yt-dlp/yt_dlp/__main__.py \"%s\" -P .\\%s", url,
             TEMP_VIDS_DIR );
 
   printf( "Running command: %s\n", command );
@@ -382,9 +382,8 @@ void convert_video_to_wav( const char* file ) {
   char buf[128];
 
   char command[512];
-  snprintf( command, sizeof( command ),
-            "ffmpeg -i \"%s\\%s\" \"%s\\%s.wav\" > $nul", TEMP_VIDS_DIR, file,
-            TEMP_WAVS_DIR, file );
+  snprintf( command, sizeof( command ), "ffmpeg -i \"%s\\%s\" \"%s\\%s.wav\"",
+            TEMP_VIDS_DIR, file, TEMP_WAVS_DIR, file );
 
   printf( "Running command: %s\n", command );
 
