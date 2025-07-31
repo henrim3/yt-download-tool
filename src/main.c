@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <fcntl.h>
+#include <fileapi.h>
 #include <io.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,6 +9,7 @@
 #include <windows.h>
 
 #include "logging.h"
+#include "string_vector.h"
 
 /* --------------- enums --------------- */
 
@@ -15,8 +17,9 @@
 
 #define INPUT_BUF_SIZE 256
 #define TOKENS_INITIAL_SIZE 8
-#define OUTPUT_LOCATIONS_INITIAL_SIZE 4
-#define TEMP_DIR_PATH "temp"
+#define OUTPUT_LOCATIONS_INITIAL_SIZE 8
+#define TEMP_VIDS_DIR "tmp\\vids"
+#define TEMP_WAVS_DIR "tmp\\wavs"
 
 /* ------------ global vars ------------ */
 
@@ -178,36 +181,6 @@ void get_input() {
   input_buf_len--;
 }
 
-// // tokens is null terminated
-// void get_tokens() {
-//   tokens_size = TOKENS_INITIAL_SIZE;
-//   tokens_len = 0;
-
-//   if ( tokens != NULL ) {
-//     free_str_arr( tokens, tokens_size );
-//     tokens = NULL;
-//   }
-//   tokens = calloc( tokens_size, sizeof( char* ) );
-
-//   char* tok = strtok( input_buf, " " );
-//   while ( tok != NULL ) {
-//     // grow if necessary, leave empty at end for NULL
-//     if ( tokens_len + 1 >= tokens_size ) {
-//       tokens_size *= 2;
-//       tokens = realloc( tokens, tokens_size * sizeof( char* ) );
-//     }
-
-//     // copy to tokens
-//     tokens[tokens_len] = malloc( ( strlen( tok ) + 1 ) * sizeof( char ) );
-//     strcpy( tokens[tokens_len], tok );
-//     tokens_len++;
-
-//     tok = strtok( NULL, " " );
-//   }
-
-//   tokens[tokens_len] = NULL;
-// }
-
 char* substr( char* s, int start, int end ) {
   assert( s != NULL && "substring source can't be null" );
   assert( start >= 0 && "substring start should be >= 0" );
@@ -233,7 +206,7 @@ void get_tokens() {
 
   if ( tokens == NULL ) {
     LOG_PERROR( "calloc error while allocating tokens" );
-    exit( 1 );
+    exit( EXIT_FAILURE );
   }
 
   int i = 0;
@@ -317,7 +290,40 @@ int is_input_safe( const char* input ) {
   return 1;
 }
 
-void download_yt_vid( const char* url ) {
+StringVector* get_files_in_dir( const char* dir_path ) {
+  WIN32_FIND_DATA find_data;
+  HANDLE handle;
+
+  char search_path[2048];
+
+  // get all files
+  sprintf( search_path, "%s\\*.*", dir_path );
+
+  handle = FindFirstFile( search_path, &find_data );
+  if ( handle == INVALID_HANDLE_VALUE ) {
+    LOG_ERROR( "FindFirstFile failed" );
+    exit( EXIT_FAILURE );
+  }
+
+  StringVector* file_names = malloc( sizeof( StringVector ) );
+  StringVector_init( file_names, 32 );
+
+  do {
+    // skip . and ..
+    if ( str_eq_any( find_data.cFileName,
+                     (const char*[]){ ".", "..", NULL } ) ) {
+      continue;
+    }
+
+    StringVector_append( file_names, find_data.cFileName );
+  } while ( FindNextFile( handle, &find_data ) );
+
+  FindClose( handle );
+
+  return file_names;
+}
+
+void download_yt_video( const char* url ) {
   printf( "Downloading %s...\n", url );
 
   if ( !is_input_safe( url ) ) {
@@ -330,8 +336,8 @@ void download_yt_vid( const char* url ) {
 
   char command[512];
   snprintf( command, sizeof( command ),
-            "python yt-dlp/yt_dlp/__main__.py \"%s\" -P ./%s/vids/ > $nul", url,
-            TEMP_DIR_PATH );
+            "python yt-dlp/yt_dlp/__main__.py \"%s\" -P .\\%s > $nul", url,
+            TEMP_VIDS_DIR );
 
   printf( "Running command: %s\n", command );
 
@@ -352,10 +358,62 @@ void download_yt_vid( const char* url ) {
   printf( "Successfully downloaded %s\n", url );
 }
 
-void download_yt_vids( const char** urls, int n ) {
+void download_yt_videos( const char** urls, int n ) {
   for ( int i = 0; i < n; i++ ) {
-    download_yt_vid( urls[i] );
+    download_yt_video( urls[i] );
   }
+}
+
+void convert_video_to_wav( const char* file ) {
+  printf( "Converting %s...\n", file );
+
+  // create temp wavs directory
+  if ( CreateDirectory( TEMP_WAVS_DIR, NULL ) == 0 ) {
+    LOG_ERROR( "Error while creating temp wavs directory" );
+    exit( EXIT_FAILURE );
+  }
+
+  if ( !is_input_safe( file ) ) {
+    printf( "Couldn't download %s due to unsafe input\n", file );
+    return;
+  }
+
+  FILE* p_pipe;
+  char buf[128];
+
+  char command[512];
+  snprintf( command, sizeof( command ),
+            "ffmpeg -i \"%s\\%s\" \"%s\\%s.wav\" > $nul", TEMP_VIDS_DIR, file,
+            TEMP_WAVS_DIR, file );
+
+  printf( "Running command: %s\n", command );
+
+  if ( ( p_pipe = _popen( command, "rt" ) ) == NULL ) {
+    LOG_PERROR( "_popen error while running ffmpeg command" );
+    exit( EXIT_FAILURE );
+  }
+
+  // need to flush for whatever reason
+  while ( fgets( buf, sizeof( buf ), p_pipe ) ) {
+  }
+
+  if ( _pclose( p_pipe ) ) {
+    LOG_ERROR( "Error while running ffmpeg command" );
+    exit( EXIT_FAILURE );
+  }
+
+  printf( "Successfully converted %s\n", file );
+}
+
+void convert_videos_to_wavs() {
+  StringVector* video_files;
+  video_files = get_files_in_dir( ".\\tmp\\vids" );
+
+  for ( int i = 0; i < video_files->length; i++ ) {
+    convert_video_to_wav( StringVector_get( video_files, i ) );
+  }
+
+  StringVector_free( video_files );
 }
 
 void print_help() {
@@ -430,6 +488,11 @@ void delete_output_location( int num ) {
   }
 }
 
+void handle_download_command() {
+  download_yt_videos( (const char**)tokens + 1, tokens_len - 1 );
+  convert_videos_to_wavs();
+}
+
 void handle_output_command() {
   if ( str_eq( tokens[1], "add" ) ) {
     if ( tokens_len == 3 ) {
@@ -477,7 +540,7 @@ int handle_input() {
   }
 
   if ( str_eq( tokens[0], "dl" ) ) {
-    download_yt_vids( (const char**)tokens + 1, tokens_len - 1 );
+    handle_download_command();
     return 0;
   }
 

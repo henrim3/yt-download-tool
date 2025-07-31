@@ -2,5 +2,9 @@
   "C_Cpp.files.exclude": {
     "**/build/_deps/sdl3-src/src/**": true
   },
-  "C_Cpp.exclusionPolicy": "checkFolders"
+  "C_Cpp.exclusionPolicy": "checkFolders",
+  "files.associations": {
+    "*.module": "php",
+    "cstdlib": "c"
+  }
 }

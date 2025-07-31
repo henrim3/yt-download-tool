@@ -19,7 +19,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(YT_DLP)
 
-add_executable(yt-download-tool src/main.c)
+add_executable(yt-download-tool src/main.c src/string_vector.c)
 
 # Copy yt-dlp to output dir
 add_custom_command(TARGET yt-download-tool POST_BUILD
