@@ -62,11 +62,6 @@ int char_in_str( char c, const char* s ) {
     i++;
   }
 
-  // for ( char* ptr = s; *ptr != '\0'; ptr++ ) {
-  //   if ( *ptr == c ) {
-  //     return 1;
-  //   }
-  // }
   return 0;
 }
 
@@ -391,14 +386,6 @@ void download_yt_videos( const char** urls, int n ) {
 
 void convert_video_to_wav( const char* file ) {
   printf( "Converting %s...\n", file );
-
-  // create temp wavs directory if it doesn't exist
-  // if ( !dir_exists( TEMP_WAVS_DIR ) ) {
-  //   if ( CreateDirectory( TEMP_WAVS_DIR, NULL ) == 0 ) {
-  //     LOG_ERROR( "Error while creating temp wavs directory" );
-  //     exit( EXIT_FAILURE );
-  //   }
-  // }
 
   ensure_dir_exists( TEMP_WAVS_DIR );
 
