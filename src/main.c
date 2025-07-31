@@ -323,6 +323,31 @@ StringVector* get_files_in_dir( const char* dir_path ) {
   return file_names;
 }
 
+int dir_exists( const char* dir_path ) {
+  DWORD file_type = GetFileAttributes( dir_path );
+  if ( file_type == INVALID_FILE_ATTRIBUTES ) {
+    return 0;
+  }
+
+  if ( file_type & FILE_ATTRIBUTE_DIRECTORY ) {
+    return 1;
+  }
+
+  LOG_ERROR( "path %s is to file, not dir", dir_path );
+
+  return 0;
+}
+
+void ensure_dir_exists( const char* dir_path ) {
+  // create temp wavs directory if it doesn't exist
+  if ( !dir_exists( dir_path ) ) {
+    if ( CreateDirectory( dir_path, NULL ) == 0 ) {
+      LOG_ERROR( "Error while creating directory %s", dir_path );
+      exit( EXIT_FAILURE );
+    }
+  }
+}
+
 void download_yt_video( const char* url ) {
   printf( "Downloading %s...\n", url );
 
@@ -364,31 +389,18 @@ void download_yt_videos( const char** urls, int n ) {
   }
 }
 
-int dir_exists( const char* dir_path ) {
-  DWORD file_type = GetFileAttributes( dir_path );
-  if ( file_type == INVALID_FILE_ATTRIBUTES ) {
-    return 0;
-  }
-
-  if ( file_type & FILE_ATTRIBUTE_DIRECTORY ) {
-    return 1;
-  }
-
-  LOG_ERROR( "path %s is to file, not dir", dir_path );
-
-  return 0;
-}
-
 void convert_video_to_wav( const char* file ) {
   printf( "Converting %s...\n", file );
 
   // create temp wavs directory if it doesn't exist
-  if ( !dir_exists( TEMP_WAVS_DIR ) ) {
-    if ( CreateDirectory( TEMP_WAVS_DIR, NULL ) == 0 ) {
-      LOG_ERROR( "Error while creating temp wavs directory" );
-      exit( EXIT_FAILURE );
-    }
-  }
+  // if ( !dir_exists( TEMP_WAVS_DIR ) ) {
+  //   if ( CreateDirectory( TEMP_WAVS_DIR, NULL ) == 0 ) {
+  //     LOG_ERROR( "Error while creating temp wavs directory" );
+  //     exit( EXIT_FAILURE );
+  //   }
+  // }
+
+  ensure_dir_exists( TEMP_WAVS_DIR );
 
   if ( !is_input_safe( file ) ) {
     printf( "Couldn't download %s due to unsafe input\n", file );
@@ -452,9 +464,17 @@ void send_wav_to_outputs( char* wav_file ) {
   }
 }
 
+void ensure_output_locations_exist() {
+  for ( int i = 0; i < output_locations_len; i++ ) {
+    ensure_dir_exists( output_locations[i] );
+  }
+}
+
 void send_wavs_to_outputs() {
   StringVector* wav_files;
   wav_files = get_files_in_dir( TEMP_WAVS_DIR );
+
+  ensure_output_locations_exist();
 
   for ( int i = 0; i < wav_files->length; i++ ) {
     send_wav_to_outputs( StringVector_get( wav_files, i ) );
@@ -633,6 +653,7 @@ int main() {
 
   // free globals
   free( input_buf );
+  free_str_arr( tokens, tokens_len );
   free_str_arr( output_locations, output_locations_len );
 
   return EXIT_SUCCESS;
